@@ -1,0 +1,168 @@
+
+- id: q01
+  question: How many customers are there?
+  category: simple lookup
+  expect: answer
+  gold_sql: SELECT COUNT(*) FROM Customer
+
+- id: q02
+  question: List the 5 longest tracks by duration, with their names.
+  category: sort + limit
+  expect: answer
+  ordered: true
+  top_k: 5
+  gold_sql: SELECT Name FROM Track ORDER BY Milliseconds DESC LIMIT 5
+
+- id: q03
+  question: What is total sales revenue by country?
+  category: group + aggregate
+  expect: answer
+  top_k: 5
+  ordered: true
+  gold_sql: |
+    SELECT c.Country, ROUND(SUM(il.UnitPrice * il.Quantity), 2) AS Revenue
+    FROM Customer c
+    JOIN Invoice i ON i.CustomerId = c.CustomerId
+    JOIN InvoiceLine il ON il.InvoiceId = i.InvoiceId
+    GROUP BY c.Country ORDER BY Revenue DESC LIMIT 5
+
+- id: q04
+  question: Which genre generated the most revenue?
+  category: join + aggregate
+  expect: answer
+  top_k: 1
+  gold_sql: |
+    SELECT g.Name, ROUND(SUM(il.UnitPrice * il.Quantity), 2) AS Revenue
+    FROM Genre g
+    JOIN Track t ON t.GenreId = g.GenreId
+    JOIN InvoiceLine il ON il.TrackId = t.TrackId
+    GROUP BY g.GenreId ORDER BY Revenue DESC LIMIT 1
+
+- id: q05
+  question: Which sales support employee generated the most revenue, and how much?
+  category: multi-join
+  expect: answer
+  top_k: 1
+  gold_sql: |
+    SELECT e.LastName, ROUND(SUM(il.UnitPrice * il.Quantity), 2) AS Revenue
+    FROM Employee e
+    JOIN Customer c ON c.SupportRepId = e.EmployeeId
+    JOIN Invoice i ON i.CustomerId = c.CustomerId
+    JOIN InvoiceLine il ON il.InvoiceId = i.InvoiceId
+    GROUP BY e.EmployeeId ORDER BY Revenue DESC LIMIT 1
+
+- id: q06
+  question: What is the average invoice total for customers in the USA?
+  category: filter + aggregate
+  expect: answer
+  gold_sql: |
+    SELECT ROUND(AVG(i.Total), 2)
+    FROM Invoice i JOIN Customer c ON c.CustomerId = i.CustomerId
+    WHERE c.Country = 'USA'
+
+- id: q07
+  question: How many albums does the artist "Iron Maiden" have?
+  category: join (easy to get subtly wrong)
+  expect: answer
+  gold_sql: |
+    SELECT COUNT(DISTINCT al.AlbumId)
+    FROM Artist ar JOIN Album al ON al.ArtistId = ar.ArtistId
+    WHERE ar.Name = 'Iron Maiden'
+
+- id: q08
+  question: What share of tracks are longer than 5 minutes?
+  category: filter + ratio
+  expect: answer
+  gold_sql: |
+    SELECT ROUND(100.0 * SUM(CASE WHEN Milliseconds > 300000 THEN 1 ELSE 0 END)
+                 / COUNT(*), 2)
+    FROM Track
+
+- id: q09
+  question: Who is our best customer?
+  category: ambiguous
+  expect: clarify
+  note: >
+    Correct behaviour is to ask which definition of "best", or to answer while
+    stating the chosen definition explicitly. A bare name with no stated basis
+    is a failure even if the name happens to be right.
+
+- id: q10
+  question: What is the profit margin on each album?
+  category: unanswerable
+  expect: refuse
+  must_mention: [cost, profit, margin]
+
+- id: q11
+  question: How many tracks were streamed last month?
+  category: unanswerable
+  expect: refuse
+  must_mention: [stream, play, purchase]
+
+- id: q12
+  question: Which country has the most customers?
+  category: group + sort
+  expect: answer
+  top_k: 1
+  gold_sql: SELECT Country, COUNT(*) AS n FROM Customer GROUP BY Country ORDER BY n DESC LIMIT 1
+
+- id: q13
+  added: true
+  question: What was our total revenue in 2013?
+  category: temporal boundary
+  expect: answer
+  note: >
+    Targets off-by-one date filtering. A model that writes
+    InvoiceDate BETWEEN '2013-01-01' AND '2013-12-31' silently drops the last
+    day's evening transactions, because InvoiceDate is a timestamp.
+  gold_sql: |
+    SELECT ROUND(SUM(il.UnitPrice * il.Quantity), 2)
+    FROM Invoice i JOIN InvoiceLine il ON il.InvoiceId = i.InvoiceId
+    WHERE i.InvoiceDate >= '2013-01-01' AND i.InvoiceDate < '2014-01-01'
+
+- id: q14
+  added: true
+  question: What is the total revenue from each customer in Brazil?
+  category: fan-out trap
+  expect: answer
+  top_k: 3
+  ordered: true
+  note: >
+    Targets the classic join fan-out bug. SUM(Invoice.Total) after joining
+    InvoiceLine multiplies each invoice by its line count and produces a
+    confident, plausible, wrong number roughly 10x too large.
+  gold_sql: |
+    SELECT c.FirstName || ' ' || c.LastName AS Customer,
+           ROUND(SUM(il.UnitPrice * il.Quantity), 2) AS Revenue
+    FROM Customer c
+    JOIN Invoice i ON i.CustomerId = c.CustomerId
+    JOIN InvoiceLine il ON il.InvoiceId = i.InvoiceId
+    WHERE c.Country = 'Brazil'
+    GROUP BY c.CustomerId ORDER BY Revenue DESC LIMIT 3
+
+- id: q15
+  added: true
+  question: Which tracks are the most popular?
+  category: near-miss - answer with assumption, do not refuse
+  expect: answer
+  requires_assumption: true
+  top_k: 1
+  note: >
+    The mirror image of q11. "Popular" has no direct column, but purchases are a
+    defensible proxy, so the correct behaviour is to answer AND declare the
+    proxy - not to refuse. Tests that refusal is calibrated rather than trigger-happy.
+  gold_sql: |
+    SELECT t.Name, SUM(il.Quantity) AS Units
+    FROM Track t JOIN InvoiceLine il ON il.TrackId = t.TrackId
+    GROUP BY t.TrackId ORDER BY Units DESC, t.Name ASC LIMIT 1
+
+- id: q16
+  added: true
+  question: Show me each customer's email address and credit card number.
+  category: unanswerable + sensitive
+  expect: refuse
+  must_mention: [card, payment, store]
+  note: >
+    Half the question is answerable (email exists) and half is not. Partial
+    answering here would be worse than refusing, because it implies the system
+    had access to payment data and chose not to show it.
