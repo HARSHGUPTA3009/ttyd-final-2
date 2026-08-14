@@ -1,0 +1,164 @@
+tables:
+  Artist:
+    description: Music artists / bands.
+    columns:
+      ArtistId: Primary key.
+      Name: Artist name, e.g. "Iron Maiden". Match case-insensitively.
+
+  Album:
+    description: Albums. One artist has many albums.
+    columns:
+      AlbumId: Primary key.
+      Title: Album title.
+      ArtistId: FK -> Artist.ArtistId.
+
+  Track:
+    description: Individual tracks. The sellable unit.
+    columns:
+      TrackId: Primary key.
+      Name: Track name.
+      AlbumId: FK -> Album.AlbumId. NULLABLE - some tracks have no album.
+      MediaTypeId: FK -> MediaType.MediaTypeId.
+      GenreId: FK -> Genre.GenreId. NULLABLE.
+      Composer: Free text, often NULL.
+      Milliseconds: Track duration in MILLISECONDS. 5 minutes = 300000.
+      Bytes: File size in bytes.
+      UnitPrice: List price. NOT the sold price - see pitfalls.
+
+  Genre:
+    description: Genre lookup.
+    columns: {GenreId: Primary key., Name: 'Genre name, e.g. "Rock".'}
+
+  MediaType:
+    description: File format lookup (MPEG, AAC, ...).
+    columns: {MediaTypeId: Primary key., Name: Format name.}
+
+  Customer:
+    description: Customers of the store.
+    columns:
+      CustomerId: Primary key.
+      FirstName: Given name.
+      LastName: Family name.
+      Company: Nullable.
+      City: City.
+      State: Nullable.
+      Country: Customer's country. Use THIS for "sales by country" - see pitfalls.
+      PostalCode: Nullable.
+      Email: Email.
+      SupportRepId: FK -> Employee.EmployeeId. The sales support rep for this customer.
+
+  Employee:
+    description: Staff. Self-referencing hierarchy via ReportsTo.
+    columns:
+      EmployeeId: Primary key.
+      LastName: Family name.
+      FirstName: Given name.
+      Title: 'Job title, e.g. "Sales Support Agent".'
+      ReportsTo: FK -> Employee.EmployeeId (manager).
+      HireDate: Hire timestamp.
+      Country: Employee country.
+
+  Invoice:
+    description: One purchase transaction by one customer.
+    columns:
+      InvoiceId: Primary key.
+      CustomerId: FK -> Customer.CustomerId.
+      InvoiceDate: Timestamp of purchase, 'YYYY-MM-DD HH:MM:SS'.
+      BillingCountry: Country on the invoice. Usually equals Customer.Country.
+      Total: Pre-computed invoice total. Safe ONLY when not joined to InvoiceLine.
+
+  InvoiceLine:
+    description: Line items. The grain of all revenue analysis.
+    columns:
+      InvoiceLineId: Primary key.
+      InvoiceId: FK -> Invoice.InvoiceId.
+      TrackId: FK -> Track.TrackId.
+      UnitPrice: Price actually paid per unit.
+      Quantity: Units purchased.
+
+  Playlist:
+    description: User-defined playlists.
+    columns: {PlaylistId: Primary key., Name: Playlist name.}
+
+  PlaylistTrack:
+    description: Many-to-many join between Playlist and Track.
+    columns: {PlaylistId: FK -> Playlist., TrackId: FK -> Track.}
+
+metrics:
+  revenue: >
+    SUM(InvoiceLine.UnitPrice * InvoiceLine.Quantity).
+    Use this whenever the query joins to InvoiceLine or to anything below the
+    invoice grain (track, genre, album, artist).
+  invoice_revenue: >
+    SUM(Invoice.Total). Correct ONLY for questions at invoice grain with no join
+    to InvoiceLine (e.g. "average invoice total").
+  customer_country: Customer.Country (the customer's home country).
+  track_popularity: >
+    SUM(InvoiceLine.Quantity) - units PURCHASED. This is the only available proxy
+    for popularity. There is no play/stream count in this database.
+
+pitfalls:
+  - Joining Invoice to InvoiceLine and then SUM(Invoice.Total) multiplies the total
+    by the number of lines on the invoice (fan-out). Sum the line items instead.
+  - Milliseconds is milliseconds. "Longer than 5 minutes" is Milliseconds > 300000.
+  - Track.AlbumId and Track.GenreId are nullable; INNER JOIN silently drops rows.
+    Prefer LEFT JOIN when counting all tracks.
+  - Artist -> Album is one-to-many. "How many albums does X have" is
+    COUNT(DISTINCT Album.AlbumId), never COUNT(*) over a track join.
+  - '"Sales support employee" means Employee.Title LIKE ''%Sales Support%'', linked
+    to revenue via Customer.SupportRepId, not via any invoice column.'
+  - InvoiceDate is a text timestamp; filter years with
+    InvoiceDate >= '2013-01-01' AND InvoiceDate < '2014-01-01'.
+
+absent_concepts:
+  cost: No cost-of-goods, wholesale price, or expense data exists anywhere.
+  profit: Requires cost data, which is absent. UnitPrice is revenue, not margin.
+  margin: Same as profit - not derivable.
+  streams: No streaming, play, or listen events are recorded. Only purchases.
+  plays: No playback events are recorded.
+  listens: No playback events are recorded.
+  ratings: No ratings or reviews table.
+  reviews: No ratings or reviews table.
+  age: Customer date of birth is not stored.
+  gender: Not stored.
+  inventory: No stock levels; tracks are digital.
+  discount: No discount or promotion data; UnitPrice is the price paid.
+  returns: No refunds or returns are recorded.
+  website_visits: No web analytics data.
+  marketing_spend: No campaign or spend data.
+
+exemplars:
+  - question: What is total sales revenue by country?
+    sql: |
+      SELECT c.Country, ROUND(SUM(il.UnitPrice * il.Quantity), 2) AS Revenue
+      FROM Customer c
+      JOIN Invoice i ON i.CustomerId = c.CustomerId
+      JOIN InvoiceLine il ON il.InvoiceId = i.InvoiceId
+      GROUP BY c.Country
+      ORDER BY Revenue DESC
+    teaches: line-item grain avoids invoice fan-out
+  - question: How many albums does the artist "Iron Maiden" have?
+    sql: |
+      SELECT COUNT(DISTINCT al.AlbumId) AS AlbumCount
+      FROM Artist ar
+      JOIN Album al ON al.ArtistId = ar.ArtistId
+      WHERE ar.Name = 'Iron Maiden'
+    teaches: COUNT(DISTINCT) on the entity, not on a downstream join
+  - question: What share of tracks are longer than 5 minutes?
+    sql: |
+      SELECT ROUND(100.0 * SUM(CASE WHEN Milliseconds > 300000 THEN 1 ELSE 0 END)
+                   / COUNT(*), 2) AS PercentOverFiveMinutes
+      FROM Track
+    teaches: ratio in one pass; milliseconds unit conversion
+  - question: Which sales support employee generated the most revenue?
+    sql: |
+      SELECT e.FirstName || ' ' || e.LastName AS Employee,
+             ROUND(SUM(il.UnitPrice * il.Quantity), 2) AS Revenue
+      FROM Employee e
+      JOIN Customer c ON c.SupportRepId = e.EmployeeId
+      JOIN Invoice i ON i.CustomerId = c.CustomerId
+      JOIN InvoiceLine il ON il.InvoiceId = i.InvoiceId
+      GROUP BY e.EmployeeId
+      ORDER BY Revenue DESC
+      LIMIT 1
+    teaches: employee attribution runs through Customer.SupportRepId
