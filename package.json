@@ -1,0 +1,27 @@
+{
+  "name": "talk-to-your-data",
+  "version": "1.0.0",
+  "description": "Ask questions about the Chinook database in plain English and get answers backed by the query and rows",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "setup": "npm install && npm run data",
+    "data": "node scripts/fetch-chinook.js",
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "ask": "node src/cli.js",
+    "smoke": "node scripts/smoke.js",
+    "demo": "node scripts/demo.js",
+    "eval": "node eval/harness.js",
+    "eval:k3": "node eval/harness.js --k 3",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "express": "^4.19.0",
+    "node-sql-parser": "^5.0.0",
+    "yaml": "^2.4.0"
+  }
+}
