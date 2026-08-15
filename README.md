@@ -20,15 +20,34 @@ npm start                  # http://localhost:8000
 - CLI: `npm run ask -- "which genre made the most revenue?"` · plain `npm run ask` opens a REPL.
 - Check which planner you're on: `curl localhost:8000/health` → `"provider": "groq"` or `"offline"`.
 
+## Deploy to Vercel
+
+```bash
+npm i -g vercel
+vercel            # preview
+vercel --prod
+```
+
+- `api/index.js` exports the same `createApp()` — no separate server code.
+- `vercel.json` rewrites every route to it and bundles `data/` + `src/`.
+- `data/chinook.db` is committed on purpose (it's ~1 MB and read-only) — Vercel deploys from git, so an ignored DB would not ship.
+- Set `GROQ_API_KEY` and `TTYD_MODEL` in **Project → Settings → Environment Variables**. `.env` is not uploaded.
+- Don't set `PORT`; Vercel handles it. `src/server.js` only calls `listen()` when you run it directly.
+- Traces go to `/tmp` on Vercel since the filesystem is read-only.
+- `better-sqlite3` is a native module — it compiles during Vercel's build. Deploy once to confirm before relying on it.
+- Cache and history are per-instance memory, so they reset on cold starts.
+
 ## What it does
 
 - **Answers** — *"which genre made the most revenue?"* → Rock, $826.65, with the SQL and rows.
 - **Asks** — *"who is our best customer?"* → runs both readings, sees they disagree (Helena Holý by spend, Aaron Mitchell by frequency), asks which you meant.
 - **Refuses** — *"what's the profit margin?"* → says there's no cost data, suggests what it *can* answer.
+- **Shows its work live** — the pipeline strip lights up stage by stage as the question runs (streamed over SSE).
 - **Remembers** — the History tab keeps the last 25 questions with their answer, SQL and rows in a dropdown.
 - **Doesn't repeat work** — the same question inside 5 minutes is served from cache, no model call.
 
 ![answer](docs/screenshots/answer.png)
+![live pipeline](docs/screenshots/flow-live.png)
 ![ambiguous](docs/screenshots/ambiguous.png)
 ![history](docs/screenshots/history.png)
 
@@ -125,6 +144,7 @@ curl -XPOST localhost:8000/ask -H 'content-type: application/json' \
 ```
 
 - `POST /ask` → `{ outcome, answer, assumption, options, evidence, verification, cached, traceId }`
+- `GET /ask/stream?q=...` → SSE: a `stage` event per pipeline step, then one `result` event. The UI falls back to `POST /ask` if streaming is blocked.
 - `GET /history` → last 25 questions with SQL and rows
 - `GET /health` → which planner is running
 - `GET /schema` → the catalog as the model sees it

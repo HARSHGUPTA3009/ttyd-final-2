@@ -37,7 +37,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 26.6
+      "latencyMs": 24.4
     },
     {
       "id": "q02",
@@ -49,7 +49,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 6.9
+      "latencyMs": 6.6
     },
     {
       "id": "q03",
@@ -61,7 +61,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 5.7
+      "latencyMs": 5.2
     },
     {
       "id": "q04",
@@ -73,7 +73,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 5.1
+      "latencyMs": 5.9
     },
     {
       "id": "q05",
@@ -85,7 +85,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 5.8
+      "latencyMs": 5
     },
     {
       "id": "q06",
@@ -97,7 +97,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 1.9
+      "latencyMs": 2.1
     },
     {
       "id": "q07",
@@ -109,7 +109,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 2.1
+      "latencyMs": 1.8
     },
     {
       "id": "q08",
@@ -121,7 +121,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 2.4
+      "latencyMs": 2.3
     },
     {
       "id": "q09",
@@ -133,7 +133,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 4.3
+      "latencyMs": 5.6
     },
     {
       "id": "q10",
@@ -169,7 +169,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 1.2
+      "latencyMs": 1.5
     },
     {
       "id": "q13",
@@ -181,7 +181,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 2
+      "latencyMs": 2.2
     },
     {
       "id": "q14",
@@ -193,7 +193,7 @@
       "behaviourOk": true,
       "failure": "",
       "detail": "",
-      "latencyMs": 2.7
+      "latencyMs": 2.8
     },
     {
       "id": "q15",

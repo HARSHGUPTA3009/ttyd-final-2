@@ -1,5 +1,5 @@
 import { config } from './config.js';
-
+import 'dotenv/config';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const REVENUE = 'SUM(il.UnitPrice * il.Quantity)';
 
