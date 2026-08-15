@@ -3,6 +3,8 @@ import express from 'express';
 import { cacheKey, dropCached, getCached, getHistory, remember, setCached } from './cache.js';
 import { config } from './config.js';
 import { closeDb } from './db.js';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   errorHandler,
   idempotency,
@@ -92,13 +94,20 @@ async function askStream(engine, req, res) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const engine = new Engine();
   const server = createApp(engine).listen(config.port, () => {
-    process.stdout.write(`http://localhost:${config.port}  provider: ${engine.client.name}/${engine.client.model}\n`);
+    process.stdout.write(
+      `http://localhost:${config.port}  provider: ${engine.client.name}/${engine.client.model}\n`
+    );
   });
 
   for (const signal of ['SIGINT', 'SIGTERM']) {
-    process.on(signal, () => server.close(() => { closeDb(); process.exit(0); }));
+    process.on(signal, () =>
+      server.close(() => {
+        closeDb();
+        process.exit(0);
+      })
+    );
   }
 }
