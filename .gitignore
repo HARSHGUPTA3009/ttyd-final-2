@@ -4,3 +4,4 @@ traces/
 data/*.db
 !data/chinook.db
 .DS_Store
+.vercel
