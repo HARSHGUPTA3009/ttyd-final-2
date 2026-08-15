@@ -6,7 +6,7 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const config = {
   dbPath: process.env.TTYD_DB || join(ROOT, 'data', 'chinook.db'),
   catalogPath: join(ROOT, 'src', 'catalog.yaml'),
-  tracePath: join(ROOT, 'traces', 'traces.jsonl'),
+  tracePath: process.env.VERCEL ? '/tmp/traces.jsonl' : join(ROOT, 'traces', 'traces.jsonl'),
 
   maxRows: 1000,
   maxTables: 8,
@@ -18,7 +18,7 @@ export const config = {
   maxTokens: 1500,
   llmTimeoutMs: 60000,
 
-  port: Number(process.env.PORT || 8000),
+  port: Number(process.env.PORT || 8001),
   maxQuestionLength: 2000,
   rateLimit: { windowMs: 60000, max: 60 },
 
