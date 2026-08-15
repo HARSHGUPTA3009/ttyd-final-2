@@ -21,8 +21,15 @@ export class Engine {
     this.client = client || getClient();
   }
 
-  async ask(question) {
+  async ask(question, onStage = () => {}) {
     const startedAt = performance.now();
+    const emit = (stage, status, detail = '') => {
+      try {
+        onStage({ stage, status, detail, atMs: Number((performance.now() - startedAt).toFixed(1)) });
+      } catch {
+        return;
+      }
+    };
     const trace = {
       at: new Date().toISOString(),
       question,
@@ -36,8 +43,9 @@ export class Engine {
 
     let result;
     try {
-      result = await this.run(question, trace);
+      result = await this.run(question, trace, emit);
     } catch (error) {
+      emit('error', 'fail', error.message);
       result = {
         outcome: 'error',
         answer:
@@ -53,6 +61,7 @@ export class Engine {
       };
     }
 
+    emit('done', 'ok', result.outcome);
     trace.outcome = result.outcome;
     trace.answer = result.answer;
     trace.latencyMs = Number((performance.now() - startedAt).toFixed(1));
@@ -62,18 +71,31 @@ export class Engine {
     return { question, traceId: trace.id, latencyMs: trace.latencyMs, cached: false, ...result, trace };
   }
 
-  async run(question, trace) {
+  async run(question, trace, emit) {
+    emit('retrieve', 'run');
+    emit('retrieve', 'ok', trace.tables.join(', '));
+
+    emit('plan', 'run');
     const chosen = await this.plan(question, trace);
     trace.planKind = chosen.kind;
+    emit('plan', 'ok', chosen.kind);
 
     if (chosen.usage) {
       trace.inputTokens += chosen.usage.inputTokens;
       trace.outputTokens += chosen.usage.outputTokens;
     }
 
-    if (chosen.kind === 'refuse') return this.refuse(chosen);
-    if (chosen.kind === 'clarify') return this.probe(chosen, question, trace);
-    return this.answer(question, chosen.sql, chosen.assumption, chosen.confidence, trace);
+    if (chosen.kind === 'refuse') {
+      emit('refuse', 'ok', chosen.missingConcept);
+      return this.refuse(chosen);
+    }
+
+    if (chosen.kind === 'clarify') {
+      emit('probe', 'run', `${chosen.options.length} readings`);
+      return this.probe(chosen, question, trace, emit);
+    }
+
+    return this.answer(question, chosen.sql, chosen.assumption, chosen.confidence, trace, emit);
   }
 
   async plan(question, trace) {
@@ -122,7 +144,7 @@ export class Engine {
     };
   }
 
-  probe(chosen, question, trace) {
+  probe(chosen, question, trace, emit = () => {}) {
     const runs = [];
 
     for (const option of chosen.options.slice(0, 4)) {
@@ -140,6 +162,7 @@ export class Engine {
     trace.probe = { readings: runs.map(({ option }) => option.label), agreed: distinct.size === 1 };
 
     if (runs.length >= 2 && distinct.size === 1) {
+      emit('probe', 'ok', 'readings agree');
       const [chosenRun, ...others] = runs;
       const names = others.map(({ option }) => `"${option.label}"`).join(', ');
 
@@ -148,7 +171,8 @@ export class Engine {
         chosenRun.sql,
         `Read as ${chosenRun.option.label}. The other reading${others.length > 1 ? 's' : ''} (${names}) give the same answer, so the difference does not matter here.`,
         chosen.confidence,
-        trace
+        trace,
+        emit
       );
     }
 
@@ -158,6 +182,7 @@ export class Engine {
       wouldAnswer: headline(result)
     }));
 
+    emit('probe', 'ok', 'readings disagree, asking');
     let answer = chosen.clarifyingQuestion || 'That question has more than one reasonable reading - which did you mean?';
     if (options.length) {
       answer += "\n\nThe readings give different answers, which is why I'm asking:";
@@ -176,15 +201,23 @@ export class Engine {
     };
   }
 
-  async answer(question, rawSql, assumption, confidence, trace) {
+  async answer(question, rawSql, assumption, confidence, trace, emit = () => {}) {
+    emit('validate', 'run');
     const checked = validate(rawSql, this.catalog);
+    emit('validate', 'ok', checked.tables.join(', '));
+
+    emit('execute', 'run');
     const result = execute(checked.sql);
+    emit('execute', 'ok', `${result.rowCount} rows in ${result.durationMs} ms`);
 
     trace.sql = checked.sql;
     trace.rowCount = result.rowCount;
     trace.rowsDigest = digestRows(result.columns, result.rows);
 
+    emit('narrate', 'run');
     const narrated = await narrate(question, result, this.client, assumption);
+    emit('narrate', 'ok');
+    emit('verify', 'run');
     if (narrated.usage) {
       trace.inputTokens += narrated.usage.inputTokens;
       trace.outputTokens += narrated.usage.outputTokens;
@@ -199,6 +232,9 @@ export class Engine {
       text = render(result);
       verdict = { grounded: true, label: 'model answer failed the grounding check and was replaced by the raw rows' };
       trace.degraded = true;
+      emit('verify', 'warn', 'ungrounded prose replaced by raw rows');
+    } else {
+      emit('verify', 'ok', verdict.label);
     }
 
     trace.verification = verdict.label;
