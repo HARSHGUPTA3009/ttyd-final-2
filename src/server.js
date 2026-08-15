@@ -38,6 +38,7 @@ export function createApp(engine = new Engine(), { quiet = false } = {}) {
   app.use(errorHandler);
   return app;
 }
+export default createApp;
 
 async function askStream(engine, req, res) {
   const question = String(req.query.q || '').trim();
